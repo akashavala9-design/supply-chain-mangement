@@ -6,6 +6,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -17,12 +18,13 @@ PROJECT = Path(__file__).resolve().parent.parent
 DATA_FILE = PROJECT / "data" / "curated" / "curated_shipments.csv"
 MODEL_FILE = PROJECT / "models" / "delay_model.joblib"
 
-import joblib
-
 
 def load_model(model_path: Path):
     if not model_path.exists():
-        logger.warning("Delay model file is missing at %s; using fallback prediction logic.", model_path)
+        logger.warning(
+            "Delay model file is missing at %s; /predict-delay will return 503 until the model is retrained and redeployed.",
+            model_path,
+        )
         return None
 
     try:
@@ -30,7 +32,11 @@ def load_model(model_path: Path):
         logger.info("Loaded delay model from %s", model_path)
         return model
     except Exception:
-        logger.warning("Delay model could not be loaded; using fallback prediction logic.", exc_info=True)
+        logger.warning(
+            "Failed to load trained delay model from %s; the artifact is likely incompatible with the installed scikit-learn version.",
+            model_path,
+            exc_info=True,
+        )
         return None
 
 
@@ -88,21 +94,6 @@ def json_safe(value):
 
 def row_to_dict(row):
     return {str(k): json_safe(v) for k, v in row.items()}
-
-
-def fallback_predict_for_shipment(row):
-    """A small compatibility fallback used when the serialized sklearn artifact is stale or broken."""
-    status = str(row.get("status", "")).upper()
-    delay_value = pd.to_numeric(row.get("actual_delay_hours"), errors="coerce")
-
-    if pd.notna(delay_value):
-        prediction = bool(delay_value > 24)
-        probability = min(max(float(delay_value / 48.0), 0.0), 1.0)
-        return prediction, probability
-
-    prediction = status in {"DELAYED", "CANCELLED"}
-    probability = 0.9 if prediction else 0.2
-    return prediction, probability
 
 
 @app.middleware("http")
@@ -236,7 +227,6 @@ def data_quality_report():
     report_path = PROJECT / "reports" / "data_quality_report.json"
     if report_path.exists():
         return json.loads(report_path.read_text())
-    # Generate a fresh report if the saved report is missing.
     return run_checks()
 
 
@@ -246,29 +236,30 @@ def predict_delay(payload: dict):
     if not shipment_id:
         raise HTTPException(422, "Request must include shipment_id")
 
+    if MODEL is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Delay model is unavailable. Retrain and redeploy a compatible model artifact.",
+        )
+
     df = load_shipments()
     matches = df[df["shipment_id"].astype(str) == str(shipment_id)]
     if matches.empty:
         raise HTTPException(404, f"Shipment '{shipment_id}' not found")
 
-    shipment = matches.iloc[0].to_dict()
+    model = MODEL
+    features = getattr(model, "feature_columns", None)
+    if not features:
+        raise HTTPException(500, "Saved model is missing feature_columns metadata")
 
-    if MODEL is None:
-        prediction, probability = fallback_predict_for_shipment(shipment)
-    else:
-        model = MODEL
-        features = getattr(model, "feature_columns", None)
-        if not features:
-            raise HTTPException(500, "Saved model is missing feature_columns metadata")
+    missing = [col for col in features if col not in matches.columns]
+    if missing:
+        raise HTTPException(500, f"Model features missing from shipment: {missing}")
 
-        missing = [col for col in features if col not in matches.columns]
-        if missing:
-            raise HTTPException(500, f"Model features missing from shipment: {missing}")
-
-        prediction = int(model.predict(matches[list(features)])[0])
-        probability = None
-        if hasattr(model, "predict_proba"):
-            probability = float(model.predict_proba(matches[list(features)])[0][1])
+    prediction = int(model.predict(matches[list(features)])[0])
+    probability = None
+    if hasattr(model, "predict_proba"):
+        probability = float(model.predict_proba(matches[list(features)])[0][1])
 
     return {
         "shipment_id": str(shipment_id),
@@ -327,4 +318,3 @@ def run_quarantine():
             status_code=500,
             detail="Quarantine run failed"
         ) from exc
-
