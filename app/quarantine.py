@@ -1,12 +1,13 @@
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 
 PROJECT = Path(__file__).resolve().parent.parent
 import os
+
 DB_FILE = Path(os.getenv(
     "QUARANTINE_DB_PATH",
     "/content/quarantine_guard.db"
@@ -72,7 +73,7 @@ def quarantine_invalid_shipments(csv_path=None):
                     "shipments",
                     record_json,
                     error_reason,
-                    datetime.now(timezone.utc).isoformat(),
+                    datetime.now(UTC).isoformat(),
                 ),
             )
             inserted += 1

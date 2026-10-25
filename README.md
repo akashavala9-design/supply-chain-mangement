@@ -367,3 +367,74 @@ fully verified solely because it was generated.
   monitoring, access controls, secrets management, and recovery validation.
 - CI is configured in `.github/workflows/ci.yml`; its remote status must be
   verified after pushing the workflow to GitHub.
+
+
+## Tech choices
+
+- **API:** FastAPI provides typed HTTP endpoints, request validation, and structured JSON responses.
+- **Data processing:** pandas handles CSV ingestion, validation, and transformations for this take-home dataset.
+- **Storage:** CSV files separate raw, curated, and serving data for a lightweight, reproducible local demonstration.
+- **ML:** A saved scikit-learn model is loaded by the API at startup. Requests do not retrain the model.
+- **GenAI assistant:** The project provides a deterministic local assistant and an optional OpenAI tool-calling path.
+- **Testing:** pytest and FastAPI TestClient support automated unit and HTTP integration tests.
+- **Packaging and CI:** Docker Compose provides a single-command deployment option; GitHub Actions runs automated checks.
+
+**Idempotency:** Curated output should be rebuilt deterministically from raw inputs, with stable shipment identifiers and explicit duplicate/conflict handling. Re-running the pipeline should not create additional copies of the same shipment.
+
+**Data relationships:** `shipment_id` identifies a shipment; `origin_port` and `destination_port` reference port codes. Port events relate to shipments through their documented shipment/event keys. Confirm exact join keys in the source files before production use.
+
+**Scaling by 100x:** Move raw and curated files to object storage, process incrementally with Spark, partition by useful query dimensions, use a transactional table format, and add orchestration, schema enforcement, monitoring, and workload-aware storage.
+
+**Intentionally out of scope:** A production cloud deployment, Kubernetes, Terraform, a user interface, and high-availability infrastructure are not implemented in this take-home.
+
+
+## Data quality summary
+
+The standalone data-quality module checks raw shipment, port, and port-event datasets. It emits a JSON report containing the check name, affected row count, percentage, severity, and recommended action. The API exposes the report through `GET /data-quality/report`.
+
+| Dataset | Check | Affected rows | Severity |
+|---|---|---:|---|
+| Shipments | Duplicate shipment IDs | 56 | Warning |
+| Shipments | Missing actual arrival | 349 | Warning |
+| Shipments | Missing weight | 73 | Critical |
+| Shipments | Missing status | 54 | Warning |
+| Shipments | Non-positive weight | 36 | Critical |
+| Shipments | Non-positive container count | 23 | Critical |
+| Shipments | Non-standard status | 30 | Warning |
+| Shipments | Unknown origin port | 42 | Critical |
+| Shipments | Unknown destination port | 55 | Critical |
+| Shipments | Arrival earlier than planned | 950 | Info |
+| Ports | Missing country | 1 | Warning |
+| Port events | Missing event type | 140 | Warning |
+| Port events | Missing notes | 1,913 | Warning |
+| Port events | Duplicate event ID | 206 | Warning |
+
+The full generated report contains **21 checks** across the three raw datasets. The counts above are per check; they may overlap and must not be added together as a unique number of bad rows.
+
+The curated shipment dataset contains 4,995 rows with 4,995 distinct non-null shipment IDs. Five conflicting shipment IDs were excluded into a quarantine/conflict file. Missing-value checks returning zero and other checks not shown in this summary remain available in the full JSON report.
+
+Critical findings require investigation or quarantine according to the check's recommended action. Informational findings, such as early arrivals, should be investigated rather than automatically rejected.
+
+
+## If I had more time
+
+1. Improve the delay model through time-aware validation, feature analysis, baseline comparison, and threshold tuning. Current ROC-AUC is approximately **0.497**, so this model is not demonstrated to be predictive enough for production use.
+2. Add tests for every data-quality rule, malformed filters, date-range boundaries, and assistant tool-selection behavior.
+3. Add correlation IDs, structured error categories, safe log redaction, and explicit logging for every assistant tool invocation and result.
+4. Add freshness, row-count reconciliation, and schema-drift alerts.
+5. Validate the container build and full startup flow in a Docker-capable environment.
+
+
+## Scaling to production
+
+- **Ingestion:** Use scheduled or event-driven incremental ingestion with checkpoints and replay support.
+- **Storage:** Store immutable raw data in object storage and use a transactional lakehouse format for curated data.
+- **Processing:** Use distributed Spark processing when data volume and workload justify it; avoid introducing distributed infrastructure without measured need.
+- **Reliability:** Use idempotent writes, stable business keys, deduplication, quarantine, retries with limits, and source-to-target reconciliation.
+- **Serving:** Put API workloads behind authenticated, rate-limited deployment infrastructure and use a database or analytical serving store appropriate to query patterns.
+- **Observability:** Track latency, throughput, freshness, failures, data-quality results, model performance, and cost.
+- **ML lifecycle:** Version artifacts and features, monitor drift and prediction quality, and retrain only through a tested deployment process.
+- **Security:** Store credentials in a secrets manager, apply least-privilege access, and redact sensitive information from logs.
+- **Deployment:** Run tests and linting in CI, build and scan the container, deploy through staged environments, verify health checks, and retain a tested rollback path.
+
+These are proposed production improvements, not claims that cloud deployment, security controls, or scaling tests have already been implemented.

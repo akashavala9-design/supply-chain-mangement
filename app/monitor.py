@@ -1,6 +1,8 @@
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import time
-import logging
 
 from app.dq import run_checks
 from app.quarantine import quarantine_invalid_shipments
@@ -17,7 +19,7 @@ def monitor_once():
     report = run_checks()
     quarantine_result = quarantine_invalid_shipments()
 
-    logging.info(
+    logger.info(
         "Data-quality checks=%s, issues=%s, new quarantined records=%s",
         report["total_checks"],
         sum(1 for issue in report["issues"]
@@ -32,7 +34,7 @@ def monitor_once():
 
 
 def run_forever():
-    logging.info(
+    logger.info(
         "Quarantine Guard monitor started; interval=%s seconds",
         INTERVAL_SECONDS,
     )
@@ -41,7 +43,7 @@ def run_forever():
         try:
             monitor_once()
         except Exception:
-            logging.exception("Quarantine Guard monitoring cycle failed")
+            logger.exception("Quarantine Guard monitoring cycle failed")
 
         time.sleep(INTERVAL_SECONDS)
 

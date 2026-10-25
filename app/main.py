@@ -1,23 +1,29 @@
-from app.quarantine import quarantine_invalid_shipments
-from pathlib import Path
-from datetime import datetime, timezone
 import json
 import logging
+
+logger = logging.getLogger(__name__)
 import time
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from app.dq import run_checks
+from app.quarantine import quarantine_invalid_shipments
 
 PROJECT = Path(__file__).resolve().parent.parent
 DATA_FILE = PROJECT / "data" / "curated" / "curated_shipments.csv"
 MODEL_FILE = PROJECT / "models" / "delay_model.joblib"
 
-import sqlite3
+import joblib
+
+MODEL = joblib.load(MODEL_FILE) if MODEL_FILE.exists() else None
 
 import os
+import sqlite3
+
 DB_FILE = Path(os.getenv(
     "QUARANTINE_DB_PATH",
     "/content/quarantine_guard.db"
@@ -74,7 +80,7 @@ async def log_requests(request: Request, call_next):
         return response
     finally:
         logger.info(json.dumps({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "method": request.method,
             "path": request.url.path,
             "status_code": status_code,
@@ -178,7 +184,7 @@ def route_stats(origin: str, destination: str):
     return {
         "origin": origin,
         "destination": destination,
-        "shipment_count": int(len(route)),
+        "shipment_count": len(route),
         "avg_delay_hours": round(float(delays.mean()), 2) if delays.notna().any() else None,
         "on_time_rate": round(float(on_time.mean()), 4) if on_time.notna().any() else None
     }
@@ -197,11 +203,10 @@ def predict_delay(payload: dict):
     if not shipment_id:
         raise HTTPException(422, "Request must include shipment_id")
 
-    if not MODEL_FILE.exists():
+    if MODEL is None:
         raise HTTPException(503, "Delay model is not trained or saved yet")
 
-    import joblib
-    model = joblib.load(MODEL_FILE)
+    model = MODEL
     df = load_shipments()
     matches = df[df["shipment_id"].astype(str) == str(shipment_id)]
     if matches.empty:
@@ -242,7 +247,7 @@ def create_incident(payload: dict):
             detail="pipeline_name, stage, and error_message are required"
         )
 
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
 
     with get_db_connection() as conn:
         cursor = conn.execute(
@@ -273,7 +278,7 @@ def run_quarantine():
             **result
         }
     except Exception as exc:
-        logging.exception("Quarantine run failed")
+        logger.exception("Quarantine run failed")
         raise HTTPException(
             status_code=500,
             detail="Quarantine run failed"

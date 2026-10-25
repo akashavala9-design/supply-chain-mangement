@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -13,7 +13,7 @@ MAX_TOOL_CALLS = 3
 
 def log_event(event):
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    record = {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
+    record = {"timestamp": datetime.now(UTC).isoformat(), **event}
     with LOG_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, default=str) + "\n")
 
@@ -36,7 +36,7 @@ def query_shipments(filters=None):
         if value and column in df.columns:
             df = df[df[column].astype(str).str.upper() == str(value).upper()]
     result = {
-        "total_matching": int(len(df)),
+        "total_matching": len(df),
         "returned": int(min(len(df), 10)),
         "items": df.head(10).where(pd.notna(df.head(10)), None).to_dict("records"),
     }
@@ -89,7 +89,7 @@ def get_route_stats(origin, destination):
     result = {
         "origin": origin_code,
         "destination": destination_code,
-        "shipment_count": int(len(route)),
+        "shipment_count": len(route),
         "shipments_with_observed_delay": int(observed.sum()),
         "average_delay_hours": round(float(delays[observed].mean()), 2)
             if observed.any() else None,
@@ -107,6 +107,7 @@ def get_route_stats(origin, destination):
 def predict_delay(shipment_id):
     """Call the project's ML prediction API endpoint."""
     from fastapi.testclient import TestClient
+
     from app.main import app
 
     with TestClient(app) as client:
@@ -195,6 +196,12 @@ def local_answer(prompt):
     try:
         if "PREDICT" in upper or "RISK" in upper:
             sid = next((w for w in words if w.upper().startswith("SHP-")), None)
+            log_event({
+                "type": "tool_call",
+                "mode": "local",
+                "tool": "predict_delay",
+                "input": {"shipment_id": sid},
+            })
             if not sid:
                 answer = "Please include a shipment ID, for example SHP-00421."
             else:
@@ -202,12 +209,32 @@ def local_answer(prompt):
         elif "ROUTE" in upper and ("SHANGHAI" in upper or "ROTTERDAM" in upper):
             origin = "SHANGHAI" if "SHANGHAI" in upper else None
             destination = "ROTTERDAM" if "ROTTERDAM" in upper else None
+            log_event({
+                "type": "tool_call",
+                "mode": "local",
+                "tool": "get_route_stats",
+                "input": {"origin": origin, "destination": destination},
+            })
             answer = json.dumps(get_route_stats(origin, destination), indent=2) if origin and destination else "Please provide both port codes."
         elif "QUARTER" in upper or "QUARTERLY" in upper or "HIGHEST" in upper:
             now = pd.Timestamp.now().normalize()
             quarter_start_month = ((now.month - 1) // 3) * 3 + 1
             start = pd.Timestamp(year=now.year, month=quarter_start_month, day=1)
-            answer = json.dumps(top_delayed_routes(start.date().isoformat(), now.date().isoformat()), indent=2, default=str)
+            tool_input = {
+                "start_date": start.date().isoformat(),
+                "end_date": now.date().isoformat(),
+            }
+            log_event({
+                "type": "tool_call",
+                "mode": "local",
+                "tool": "top_delayed_routes",
+                "input": tool_input,
+            })
+            answer = json.dumps(
+                top_delayed_routes(**tool_input),
+                indent=2,
+                default=str,
+            )
         else:
             filters = {}
             for key in ("origin", "destination", "status"):
@@ -215,12 +242,18 @@ def local_answer(prompt):
                     idx = upper.index(key.upper())
                     if idx + 1 < len(words):
                         filters[key] = words[idx + 1]
+            log_event({
+                "type": "tool_call",
+                "mode": "local",
+                "tool": "query_shipments",
+                "input": filters,
+            })
             answer = json.dumps(query_shipments(filters), indent=2, default=str)
 
         log_event({"type": "final_output", "mode": "local",
                    "answer": answer, "evidence": "tool response"})
         return answer
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         log_event({"type": "assistant_error", "mode": "local", "error": str(exc)})
         return f"Tool error: {exc}"
 
@@ -305,8 +338,22 @@ def openai_answer(prompt):
                     raise ValueError("Unknown tool")
                 result = TOOLS[name](**args)
                 content = json.dumps(result, default=str)
-            except Exception as exc:
+                log_event({
+                    "type": "tool_response",
+                    "mode": "openai",
+                    "tool": name,
+                    "input": args,
+                    "response": result,
+                })
+            except Exception as exc:  # noqa: BLE001
                 content = json.dumps({"error": str(exc)})
+                log_event({
+                    "type": "tool_response",
+                    "mode": "openai",
+                    "tool": name,
+                    "input": locals().get("args", {}),
+                    "error": str(exc),
+                })
             messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
 
     answer = "Tool-call limit reached. Please narrow your question."

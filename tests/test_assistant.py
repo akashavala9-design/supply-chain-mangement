@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-import pandas as pd
-
 PROJECT = Path(__file__).resolve().parents[1]
 
 from app import assistant
