@@ -51,7 +51,28 @@ DB_FILE = Path(os.getenv(
 ))
 
 
+def initialize_incidents_db(db_path: str | Path | None = None) -> Path:
+    """Ensure the incidents table exists without altering existing data."""
+    target = Path(db_path) if db_path is not None else DB_FILE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(target, timeout=10) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pipeline_name TEXT,
+                stage TEXT,
+                error_message TEXT,
+                status TEXT,
+                created_at TEXT
+            )
+            """
+        )
+    return target
+
+
 def get_db_connection():
+    initialize_incidents_db()
     conn = sqlite3.connect(DB_FILE, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
