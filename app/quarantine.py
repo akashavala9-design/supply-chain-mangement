@@ -48,6 +48,13 @@ def initialize_db(conn):
     )
 
 
+def initialize_quarantine_db(db_path=None):
+    database_path = ensure_db_parent(Path(db_path) if db_path else get_db_path())
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        initialize_db(conn)
+    return database_path
+
+
 def get_db_connection(db_path=None):
     database_path = ensure_db_parent(Path(db_path) if db_path else get_db_path())
     conn = sqlite3.connect(database_path, timeout=10)
