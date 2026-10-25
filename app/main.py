@@ -19,12 +19,22 @@ MODEL_FILE = PROJECT / "models" / "delay_model.joblib"
 
 import joblib
 
-try:
-    MODEL = joblib.load(MODEL_FILE)
-    logger.info("Loaded delay model from %s", MODEL_FILE)
-except Exception:  # pragma: no cover - defensive guard for stale/broken serialized artifacts
-    MODEL = None
-    logger.warning("Delay model could not be loaded; falling back to lightweight prediction logic.", exc_info=True)
+
+def load_model(model_path: Path):
+    if not model_path.exists():
+        logger.warning("Delay model file is missing at %s; using fallback prediction logic.", model_path)
+        return None
+
+    try:
+        model = joblib.load(model_path)
+        logger.info("Loaded delay model from %s", model_path)
+        return model
+    except Exception:
+        logger.warning("Delay model could not be loaded; using fallback prediction logic.", exc_info=True)
+        return None
+
+
+MODEL = load_model(MODEL_FILE)
 
 import os
 import sqlite3

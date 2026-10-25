@@ -40,16 +40,56 @@ def test_data_quality_report():
     assert "issues" in data
     assert len(data["issues"]) >= 12
 
-def test_predict_delay():
+def test_predict_delay_success_uses_fake_model(monkeypatch):
+    import app.main as main_module
+
+    feature_columns = [
+        "origin_port",
+        "destination_port",
+        "cargo_type",
+        "weight_tons",
+        "container_count",
+        "transit_days_planned",
+    ]
+
+    class FakeModel:
+        def __init__(self):
+            self.feature_columns = feature_columns
+
+        def predict(self, rows):
+            return [0]
+
+        def predict_proba(self, rows):
+            return [[0.9, 0.1]]
+
+    monkeypatch.setattr(main_module, "MODEL", FakeModel())
+
     response = client.post(
         "/predict-delay",
-        json={"shipment_id": "SHP-00001"}
+        json={"shipment_id": "SHP-00001"},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["shipment_id"] == "SHP-00001"
-    assert isinstance(data["predicted_more_than_24h_late"], bool)
-    assert 0 <= data["probability_more_than_24h_late"] <= 1
+    assert data["predicted_more_than_24h_late"] is False
+    assert data["probability_more_than_24h_late"] == 0.1
+    assert data["model_version"] == "1.0.0"
+
+
+def test_predict_delay_uses_fallback_when_model_missing(monkeypatch):
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "MODEL", None)
+    response = client.post(
+        "/predict-delay",
+        json={"shipment_id": "SHP-00001"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["shipment_id"] == "SHP-00001"
+    assert isinstance(body["predicted_more_than_24h_late"], bool)
+    assert 0.0 <= body["probability_more_than_24h_late"] <= 1.0
 
 def test_predict_unknown_shipment_returns_404():
     response = client.post(
