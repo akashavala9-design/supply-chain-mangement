@@ -1,0 +1,44 @@
+{
+  "model": "LogisticRegression",
+  "target": "actual_delay_hours > 24",
+  "feature_columns": [
+    "origin_port",
+    "destination_port",
+    "cargo_type",
+    "weight_tons",
+    "container_count",
+    "transit_days_planned"
+  ],
+  "excluded_leakage_columns": [
+    "actual_arrival",
+    "actual_delay_hours",
+    "status",
+    "actual_departure",
+    "target_late_over_24h"
+  ],
+  "labelled_rows": 4649,
+  "train_rows": 3719,
+  "test_rows": 930,
+  "positive_label_rate": 0.4055,
+  "accuracy": 0.4828,
+  "precision": 0.3908,
+  "recall": 0.4934,
+  "f1": 0.4361,
+  "roc_auc": 0.497,
+  "confusion_matrix_labels": [
+    "actual_0",
+    "actual_1"
+  ],
+  "confusion_matrix": [
+    [
+      263,
+      290
+    ],
+    [
+      191,
+      186
+    ]
+  ],
+  "random_state": 42,
+  "sklearn_version": "1.6.1"
+}

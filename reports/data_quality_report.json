@@ -1,0 +1,186 @@
+{
+  "report_name": "Supply Chain Data Quality Report",
+  "version": "1.0.0",
+  "datasets": {
+    "shipments": {
+      "rows_checked": 5028
+    },
+    "ports": {
+      "rows_checked": 25
+    },
+    "port_events": {
+      "rows_checked": 25000
+    }
+  },
+  "total_checks": 21,
+  "issues": [
+    {
+      "dataset": "shipments",
+      "issue": "Missing shipment ID",
+      "rows_affected": 0,
+      "percent_total": 0.0,
+      "severity": "critical",
+      "recommended_action": "Quarantine records without a shipment ID."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Duplicate shipment IDs",
+      "rows_affected": 56,
+      "percent_total": 1.11,
+      "severity": "warning",
+      "recommended_action": "Compare duplicate records; merge compatible rows and quarantine conflicts."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Missing origin_port",
+      "rows_affected": 0,
+      "percent_total": 0.0,
+      "severity": "critical",
+      "recommended_action": "Investigate missing origin_port; do not silently invent values."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Missing destination_port",
+      "rows_affected": 0,
+      "percent_total": 0.0,
+      "severity": "critical",
+      "recommended_action": "Investigate missing destination_port; do not silently invent values."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Missing planned_arrival",
+      "rows_affected": 0,
+      "percent_total": 0.0,
+      "severity": "critical",
+      "recommended_action": "Investigate missing planned_arrival; do not silently invent values."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Missing actual_arrival",
+      "rows_affected": 349,
+      "percent_total": 6.94,
+      "severity": "warning",
+      "recommended_action": "Investigate missing actual_arrival; do not silently invent values."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Missing weight_tons",
+      "rows_affected": 73,
+      "percent_total": 1.45,
+      "severity": "critical",
+      "recommended_action": "Investigate missing weight_tons; do not silently invent values."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Missing container_count",
+      "rows_affected": 0,
+      "percent_total": 0.0,
+      "severity": "critical",
+      "recommended_action": "Investigate missing container_count; do not silently invent values."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Missing status",
+      "rows_affected": 54,
+      "percent_total": 1.07,
+      "severity": "warning",
+      "recommended_action": "Investigate missing status; do not silently invent values."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Non-positive weight_tons",
+      "rows_affected": 36,
+      "percent_total": 0.72,
+      "severity": "critical",
+      "recommended_action": "Quarantine records where weight_tons is zero or negative."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Non-positive container_count",
+      "rows_affected": 23,
+      "percent_total": 0.46,
+      "severity": "critical",
+      "recommended_action": "Quarantine records where container_count is zero or negative."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Unknown or non-standard shipment status",
+      "rows_affected": 30,
+      "percent_total": 0.6,
+      "severity": "warning",
+      "recommended_action": "Normalize approved status values and investigate unexpected values."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Unknown origin_port code",
+      "rows_affected": 42,
+      "percent_total": 0.84,
+      "severity": "critical",
+      "recommended_action": "Check the source code against the authoritative port reference."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Unknown destination_port code",
+      "rows_affected": 55,
+      "percent_total": 1.09,
+      "severity": "critical",
+      "recommended_action": "Check the source code against the authoritative port reference."
+    },
+    {
+      "dataset": "shipments",
+      "issue": "Actual arrival earlier than planned arrival",
+      "rows_affected": 950,
+      "percent_total": 18.89,
+      "severity": "info",
+      "recommended_action": "Review as an early-arrival anomaly; do not automatically quarantine."
+    },
+    {
+      "dataset": "ports",
+      "issue": "Missing port code",
+      "rows_affected": 0,
+      "percent_total": 0.0,
+      "severity": "critical",
+      "recommended_action": "Repair or quarantine reference records without a code."
+    },
+    {
+      "dataset": "ports",
+      "issue": "Duplicate port codes",
+      "rows_affected": 0,
+      "percent_total": 0.0,
+      "severity": "warning",
+      "recommended_action": "Resolve duplicate reference keys before joining."
+    },
+    {
+      "dataset": "ports",
+      "issue": "Missing country",
+      "rows_affected": 1,
+      "percent_total": 4.0,
+      "severity": "warning",
+      "recommended_action": "Complete country from an authoritative reference source."
+    },
+    {
+      "dataset": "port_events",
+      "issue": "Missing event_type",
+      "rows_affected": 140,
+      "percent_total": 0.56,
+      "severity": "warning",
+      "recommended_action": "Check whether event_type is required; quarantine only if required by the contract."
+    },
+    {
+      "dataset": "port_events",
+      "issue": "Missing notes",
+      "rows_affected": 1913,
+      "percent_total": 7.65,
+      "severity": "warning",
+      "recommended_action": "Check whether notes is required; quarantine only if required by the contract."
+    },
+    {
+      "dataset": "port_events",
+      "issue": "Duplicate event_id",
+      "rows_affected": 206,
+      "percent_total": 0.82,
+      "severity": "warning",
+      "recommended_action": "Investigate repeated IDs and make ingestion idempotent."
+    }
+  ]
+}
