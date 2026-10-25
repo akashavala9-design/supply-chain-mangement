@@ -76,7 +76,7 @@ def test_predict_delay_success_uses_fake_model(monkeypatch):
     assert data["model_version"] == "1.0.0"
 
 
-def test_predict_delay_uses_fallback_when_model_missing(monkeypatch):
+def test_predict_delay_returns_503_when_model_missing(monkeypatch):
     import app.main as main_module
 
     monkeypatch.setattr(main_module, "MODEL", None)
@@ -85,11 +85,13 @@ def test_predict_delay_uses_fallback_when_model_missing(monkeypatch):
         json={"shipment_id": "SHP-00001"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     body = response.json()
-    assert body["shipment_id"] == "SHP-00001"
-    assert isinstance(body["predicted_more_than_24h_late"], bool)
-    assert 0.0 <= body["probability_more_than_24h_late"] <= 1.0
+    assert body["error"]["code"] == 503
+    assert body["error"]["message"] == (
+        "Delay model is unavailable. Retrain and redeploy a compatible model artifact."
+    )
+    assert body["error"]["path"] == "/predict-delay"
 
 def test_predict_unknown_shipment_returns_404():
     response = client.post(
