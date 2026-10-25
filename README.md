@@ -6,10 +6,13 @@ and an assistant that can call data tools.
 
 ## Project status
 
-This is a take-home project, not a claim of production deployment. The local
-API and assistant tool smoke tests have passed in the development notebook.
-The existing API test suite has 8 passing tests. Real provider-backed LLM
-tool selection has not been verified because no provider API key is configured.
+This is a take-home project, not a claim of production deployment. The verified
+GitHub Actions run for commit `56b50d17fb65148ab62bc9752e0f25ad8b486c82`
+on `master` passed the configured checks: `python -m ruff check app tests`,
+`python -m pytest -q`, and the Docker image build
+(`docker build -t supply-chain-intelligence:ci .`).
+Provider-backed OpenAI tool calling has not been verified in this repository
+because no live provider integration test was run.
 
 ## Architecture
 
@@ -29,12 +32,12 @@ FastAPI serving endpoints       Assistant tools
       |                              |
       v                              +--> Query shipments
 Saved delay model                    +--> Route statistics
-                                     +--> Delay prediction API
-                                     +--> Quarterly route ranking
-                                            |
-                                            v
-                                  Optional LLM provider
-                                  (API key required)
+                                      +--> Delay prediction API
+                                      +--> Quarterly route ranking
+                                             |
+                                             v
+                                   Optional LLM provider
+                                   (API key required)
 ```
 
 ## Repository layout
@@ -53,10 +56,12 @@ Saved delay model                    +--> Route statistics
 
 ## Requirements
 
-- Python 3.12 recommended for the Docker image.
+- Python 3.12 is used by the Docker image (`python:3.12-slim`).
 - Python and pip for local development.
 - Docker with the Compose plugin for containerized execution.
 - An OpenAI API key is optional and is required only for real OpenAI calls.
+- The project dependency pin in `requirements.txt` includes
+  `scikit-learn==1.6.1`.
 
 ## Run locally
 
@@ -117,9 +122,11 @@ The assistant exposes these tools:
 - `top_delayed_routes(start_date, end_date)`: rank routes by average observed delay
   in the requested arrival-date window.
 
-The OpenAI mode uses function/tool calling and allows the model to choose tools.
-It requires `OPENAI_API_KEY`. The implementation limits tool calls per request
-and refuses questions outside the supply-chain domain.
+The OpenAI mode is implemented, but provider-backed tool calling has not been
+verified in this repository. It requires `OPENAI_API_KEY` and a live provider
+integration test before claiming end-to-end OpenAI tool execution works. The
+implementation limits tool calls per request and refuses questions outside the
+supply-chain domain.
 
 Set credentials in your shell rather than committing them:
 
@@ -169,7 +176,7 @@ Run:
 python -m pytest -v tests
 ```
 
-The existing eight API tests cover health, shipment lookup, not-found behavior,
+The existing tests cover health, shipment lookup, not-found behavior,
 pagination, data-quality reporting, prediction, unknown prediction IDs, and
 request validation. Assistant-specific tests, broader integration tests, and
 container smoke tests should be added before claiming comprehensive coverage.
@@ -210,8 +217,6 @@ For the take-home, the focus is reproducibility, data correctness, explainable
 trade-offs, and testable behavior—not claiming production readiness without
 evidence.
 
-
-
 ## Getting Started
 
 ### Option A: Docker Compose
@@ -238,7 +243,8 @@ the running containers.
 
 ### Option B: Local Python
 
-Use Python 3.11 or another version supported by the project dependencies.
+Use Python 3.12 for the Docker image and local compatibility with the project
+dependencies. The repository pins `scikit-learn==1.6.1` in `requirements.txt`.
 
 Create and activate a virtual environment:
 
@@ -368,7 +374,6 @@ fully verified solely because it was generated.
 - CI is configured in `.github/workflows/ci.yml`; its remote status must be
   verified after pushing the workflow to GitHub.
 
-
 ## Tech choices
 
 - **API:** FastAPI provides typed HTTP endpoints, request validation, and structured JSON responses.
@@ -379,18 +384,17 @@ fully verified solely because it was generated.
 - **Testing:** pytest and FastAPI TestClient support automated unit and HTTP integration tests.
 - **Packaging and CI:** Docker Compose provides a single-command deployment option; GitHub Actions runs automated checks.
 
-**Idempotency:** Curated output should be rebuilt deterministically from raw inputs, with stable shipment identifiers and explicit duplicate/conflict handling. Re-running the pipeline should not create additional copies of the same shipment.
+**Idempotency:** Curated output should be rebuilt deterministically from raw inputs, with stable shipment identifiers and explicit duplicate/conflict handling. Re-running the pipeline should not []
 
-**Data relationships:** `shipment_id` identifies a shipment; `origin_port` and `destination_port` reference port codes. Port events relate to shipments through their documented shipment/event keys. Confirm exact join keys in the source files before production use.
+**Data relationships:** `shipment_id` identifies a shipment; `origin_port` and `destination_port` reference port codes. Port events relate to shipments through their documented shipment/event key[]
 
-**Scaling by 100x:** Move raw and curated files to object storage, process incrementally with Spark, partition by useful query dimensions, use a transactional table format, and add orchestration, schema enforcement, monitoring, and workload-aware storage.
+**Scaling by 100x:** Move raw and curated files to object storage, process incrementally with Spark, partition by useful query dimensions, use a transactional table format, and add orchestration,[]
 
 **Intentionally out of scope:** A production cloud deployment, Kubernetes, Terraform, a user interface, and high-availability infrastructure are not implemented in this take-home.
 
-
 ## Data quality summary
 
-The standalone data-quality module checks raw shipment, port, and port-event datasets. It emits a JSON report containing the check name, affected row count, percentage, severity, and recommended action. The API exposes the report through `GET /data-quality/report`.
+The standalone data-quality module checks raw shipment, port, and port-event datasets. It emits a JSON report containing the check name, affected row count, percentage, severity, and recommended []
 
 | Dataset | Check | Affected rows | Severity |
 |---|---|---:|---|
@@ -411,19 +415,17 @@ The standalone data-quality module checks raw shipment, port, and port-event dat
 
 The full generated report contains **21 checks** across the three raw datasets. The counts above are per check; they may overlap and must not be added together as a unique number of bad rows.
 
-The curated shipment dataset contains 4,995 rows with 4,995 distinct non-null shipment IDs. Five conflicting shipment IDs were excluded into a quarantine/conflict file. Missing-value checks returning zero and other checks not shown in this summary remain available in the full JSON report.
+The curated shipment dataset contains 4,995 rows with 4,995 distinct non-null shipment IDs. Five conflicting shipment IDs were excluded into a quarantine/conflict file. Missing-value checks retur[]
 
-Critical findings require investigation or quarantine according to the check's recommended action. Informational findings, such as early arrivals, should be investigated rather than automatically rejected.
-
+Critical findings require investigation or quarantine according to the check's recommended action. Informational findings, such as early arrivals, should be investigated rather than automatically[]
 
 ## If I had more time
 
-1. Improve the delay model through time-aware validation, feature analysis, baseline comparison, and threshold tuning. Current ROC-AUC is approximately **0.497**, so this model is not demonstrated to be predictive enough for production use.
+1. Improve the delay model through time-aware validation, feature analysis, baseline comparison, and threshold tuning. Current ROC-AUC is approximately **0.497**, so this model is not demonstrate[]
 2. Add tests for every data-quality rule, malformed filters, date-range boundaries, and assistant tool-selection behavior.
 3. Add correlation IDs, structured error categories, safe log redaction, and explicit logging for every assistant tool invocation and result.
 4. Add freshness, row-count reconciliation, and schema-drift alerts.
 5. Validate the container build and full startup flow in a Docker-capable environment.
-
 
 ## Scaling to production
 
