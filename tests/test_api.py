@@ -10,20 +10,24 @@ from app.main import app
 
 client = TestClient(app)
 
+
 def test_health_endpoint():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
+
 
 def test_shipment_lookup_success():
     response = client.get("/shipments/SHP-00001")
     assert response.status_code == 200
     assert response.json()["shipment_id"] == "SHP-00001"
 
+
 def test_unknown_shipment_returns_404():
     response = client.get("/shipments/DOES-NOT-EXIST-999")
     assert response.status_code == 404
     assert "error" in response.json()
+
 
 def test_shipment_list_supports_pagination():
     response = client.get("/shipments?page=1&page_size=5")
@@ -33,12 +37,14 @@ def test_shipment_list_supports_pagination():
     assert data["page"] == 1
     assert "total" in data
 
+
 def test_data_quality_report():
     response = client.get("/data-quality/report")
     assert response.status_code == 200
     data = response.json()
     assert "issues" in data
     assert len(data["issues"]) >= 12
+
 
 def test_predict_delay_success_uses_fake_model(monkeypatch):
     import app.main as main_module
@@ -93,13 +99,70 @@ def test_predict_delay_returns_503_when_model_missing(monkeypatch):
     )
     assert body["error"]["path"] == "/predict-delay"
 
+
 def test_predict_unknown_shipment_returns_404():
     response = client.post(
         "/predict-delay",
-        json={"shipment_id": "DOES-NOT-EXIST-999"}
+        json={"shipment_id": "DOES-NOT-EXIST-999"},
     )
     assert response.status_code == 404
+
 
 def test_predict_requires_shipment_id():
     response = client.post("/predict-delay", json={})
     assert response.status_code == 422
+
+
+def test_initialize_quarantine_db_creates_table(tmp_path):
+    import sqlite3
+
+    from app.quarantine import initialize_quarantine_db
+
+    db_path = tmp_path / "nested" / "quarantine.db"
+    result = initialize_quarantine_db(db_path)
+
+    assert result == db_path
+    assert db_path.exists()
+    with sqlite3.connect(db_path) as conn:
+        names = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='quarantine'").fetchall()
+    assert names == [("quarantine",)]
+
+
+def test_quarantine_is_idempotent_on_duplicate_records(tmp_path):
+    import sqlite3
+
+    import pandas as pd
+
+    from app.quarantine import quarantine_invalid_shipments
+
+    raw = tmp_path / "shipments.csv"
+    raw_df = [
+        {
+            "shipment_id": "SHP-ONE",
+            "origin_port": "NLRTM",
+            "destination_port": "GBFXT",
+            "status": "DELAYED",
+            "weight_tons": 100,
+            "container_count": 0,
+        },
+        {
+            "shipment_id": "SHP-TWO",
+            "origin_port": "NLRTM",
+            "destination_port": "GBFXT",
+            "status": "DELAYED",
+            "weight_tons": 150,
+            "container_count": 3,
+        },
+    ]
+    pd.DataFrame(raw_df).to_csv(raw, index=False)
+
+    prev = quarantine_invalid_shipments(raw)
+    second = quarantine_invalid_shipments(raw)
+
+    assert prev["new_records"] == 1
+    assert second["new_records"] == 0
+
+    db_path = Path("data/quarantine/quarantine_guard.db")
+    with sqlite3.connect(db_path) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM quarantine").fetchone()[0]
+    assert count >= 1
